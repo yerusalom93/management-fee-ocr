@@ -5,6 +5,8 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RunScript = Join-Path $ScriptDir "run_ocr.ps1"
+$WorkDir = Join-Path $ScriptDir "work"
+$LogFile = Join-Path $WorkDir "last_gui.log"
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -22,6 +24,10 @@ function Add-Log([string]$Text) {
   if ([string]::IsNullOrWhiteSpace($Text)) {
     return
   }
+  try {
+    New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+    Add-Content -LiteralPath $LogFile -Value $Text -Encoding UTF8
+  } catch {}
   $action = [System.Action]{
     $script:LogBox.AppendText($Text + [Environment]::NewLine)
     $script:LogBox.SelectionStart = $script:LogBox.Text.Length
@@ -65,6 +71,8 @@ function Start-Ocr([string]$PdfPath) {
   $pdfDir = Split-Path -Parent $pdfFullPath
   $baseName = [System.IO.Path]::GetFileNameWithoutExtension($pdfFullPath)
   $script:OutputXlsx = Join-Path $pdfDir ($baseName + "_ocr.xlsx")
+  New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+  Set-Content -LiteralPath $LogFile -Value "" -Encoding UTF8
 
   $script:LogBox.Clear()
   $script:OpenButton.Enabled = $false
@@ -73,6 +81,7 @@ function Start-Ocr([string]$PdfPath) {
   Set-Busy $true
   Add-Log "PDF: $pdfFullPath"
   Add-Log "Output: $script:OutputXlsx"
+  Add-Log "Log: $LogFile"
 
   $powershellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
   $arguments = @(
@@ -115,9 +124,11 @@ function Start-Ocr([string]$PdfPath) {
         $script:StatusLabel.Text = "Done."
         $script:OpenButton.Enabled = $true
         [System.Media.SystemSounds]::Asterisk.Play()
+        [System.Windows.Forms.MessageBox]::Show("Excel file created:`n$script:OutputXlsx", "OCR complete", "OK", "Information") | Out-Null
       } else {
         $script:StatusLabel.Text = "Failed. Check the log."
         [System.Media.SystemSounds]::Exclamation.Play()
+        [System.Windows.Forms.MessageBox]::Show("OCR failed. Check the log:`n$LogFile", "OCR failed", "OK", "Error") | Out-Null
       }
     }
     [void]$script:Form.BeginInvoke($action)

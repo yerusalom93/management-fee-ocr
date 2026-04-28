@@ -1,4 +1,5 @@
 .venv/
+.runtime/
 work/
 __pycache__/
 *.pyc
@@ -8,6 +9,7 @@ __pycache__/
 *.xlsx
 *.json
 *.png
+*.zip
 pages*/
 fresh*/
 ocr_*.json
