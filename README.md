@@ -45,6 +45,8 @@ Python은 별도로 설치하지 않아도 됩니다. 단, 완전 오프라인 P
 
 생성된 `management-fee-ocr-offline.zip`을 오프라인 PC에 옮겨 압축을 풀고 `run_ocr.bat`을 실행하면 됩니다.
 
+직접 만들기 어렵다면 GitHub Releases에서 `management-fee-ocr-offline.zip`을 내려받아 사용할 수도 있습니다.
+
 ## 설치
 
 보통은 `run_ocr.bat` 또는 `run_ocr.ps1`을 처음 실행할 때 자동 설치됩니다. 수동 설치가 필요하면:
