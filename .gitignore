@@ -1,0 +1,21 @@
+.venv/
+work/
+__pycache__/
+*.pyc
+
+# Private source documents and generated artifacts
+*.pdf
+*.xlsx
+*.json
+*.png
+pages*/
+fresh*/
+ocr_*.json
+management_fee_*.xlsx
+
+# Local editor and OS files
+.DS_Store
+Thumbs.db
+
+# Scratch scripts from local OCR experiments
+test_ocr.ps1
