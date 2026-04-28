@@ -1,5 +1,7 @@
 param(
-  [switch]$SelfTest
+  [switch]$SelfTest,
+  [string]$AutoRunPdf = "",
+  [switch]$ExitAfterAutoRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,6 +9,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RunScript = Join-Path $ScriptDir "run_ocr.ps1"
 $WorkDir = Join-Path $ScriptDir "work"
 $LogFile = Join-Path $WorkDir "last_gui.log"
+$script:AutoRunExitCode = 1
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -102,42 +105,52 @@ function Start-Ocr([string]$PdfPath) {
   $proc.StartInfo.CreateNoWindow = $true
   $proc.EnableRaisingEvents = $true
 
-  $proc.add_OutputDataReceived({
-    param($sender, $eventArgs)
-    if ($eventArgs.Data) {
-      Add-Log $eventArgs.Data
-    }
-  })
-  $proc.add_ErrorDataReceived({
-    param($sender, $eventArgs)
-    if ($eventArgs.Data) {
-      Add-Log ("ERROR: " + $eventArgs.Data)
-    }
-  })
   $proc.add_Exited({
     param($sender, $eventArgs)
     $script:LastExitCode = $sender.ExitCode
-    Add-Log ("Exit code: " + $script:LastExitCode)
-    $action = [System.Action]{
-      Set-Busy $false
-      if ($script:LastExitCode -eq 0 -and (Test-Path -LiteralPath $script:OutputXlsx)) {
-        $script:StatusLabel.Text = "Done."
-        $script:OpenButton.Enabled = $true
-        [System.Media.SystemSounds]::Asterisk.Play()
-        [System.Windows.Forms.MessageBox]::Show("Excel file created:`n$script:OutputXlsx", "OCR complete", "OK", "Information") | Out-Null
-      } else {
-        $script:StatusLabel.Text = "Failed. Check the log."
-        [System.Media.SystemSounds]::Exclamation.Play()
-        [System.Windows.Forms.MessageBox]::Show("OCR failed. Check the log:`n$LogFile", "OCR failed", "OK", "Error") | Out-Null
+    $stdout = $sender.StandardOutput.ReadToEnd()
+    $stderr = $sender.StandardError.ReadToEnd()
+    if ($ExitAfterAutoRun) {
+      foreach ($line in ($stdout -split "\r?\n")) {
+        if ($line) { Add-Content -LiteralPath $LogFile -Value $line -Encoding UTF8 }
       }
+      foreach ($line in ($stderr -split "\r?\n")) {
+        if ($line) { Add-Content -LiteralPath $LogFile -Value ("ERROR: " + $line) -Encoding UTF8 }
+      }
+      Add-Content -LiteralPath $LogFile -Value ("Exit code: " + $script:LastExitCode) -Encoding UTF8
+      if ($script:LastExitCode -eq 0 -and (Test-Path -LiteralPath $script:OutputXlsx)) {
+        $script:AutoRunExitCode = 0
+      } else {
+        $script:AutoRunExitCode = 1
+      }
+      [void]$script:Form.BeginInvoke([System.Action]{ $script:Form.Close() })
+    } else {
+      foreach ($line in ($stdout -split "\r?\n")) {
+        if ($line) { Add-Log $line }
+      }
+      foreach ($line in ($stderr -split "\r?\n")) {
+        if ($line) { Add-Log ("ERROR: " + $line) }
+      }
+      Add-Log ("Exit code: " + $script:LastExitCode)
+      $action = [System.Action]{
+        Set-Busy $false
+        if ($script:LastExitCode -eq 0 -and (Test-Path -LiteralPath $script:OutputXlsx)) {
+          $script:StatusLabel.Text = "Done."
+          $script:OpenButton.Enabled = $true
+          [System.Media.SystemSounds]::Asterisk.Play()
+          [System.Windows.Forms.MessageBox]::Show("Excel file created:`n$script:OutputXlsx", "OCR complete", "OK", "Information") | Out-Null
+        } else {
+          $script:StatusLabel.Text = "Failed. Check the log."
+          [System.Media.SystemSounds]::Exclamation.Play()
+          [System.Windows.Forms.MessageBox]::Show("OCR failed. Check the log:`n$LogFile", "OCR failed", "OK", "Error") | Out-Null
+        }
+      }
+      [void]$script:Form.BeginInvoke($action)
     }
-    [void]$script:Form.BeginInvoke($action)
   })
 
   $script:CurrentProcess = $proc
   [void]$proc.Start()
-  $proc.BeginOutputReadLine()
-  $proc.BeginErrorReadLine()
 }
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -254,4 +267,23 @@ $script:Form.Controls.AddRange(@(
   $script:LogBox
 ))
 
-[void][System.Windows.Forms.Application]::Run($script:Form)
+if ($AutoRunPdf) {
+  $script:Form.Add_Shown({
+    Start-Ocr $AutoRunPdf
+  })
+}
+
+try {
+  [void][System.Windows.Forms.Application]::Run($script:Form)
+} catch {
+  if ($ExitAfterAutoRun) {
+    Add-Content -LiteralPath $LogFile -Value ("GUI exception: " + $_.Exception.Message) -Encoding UTF8
+    exit 1
+  }
+  throw
+}
+
+if ($ExitAfterAutoRun) {
+  Add-Content -LiteralPath $LogFile -Value ("AutoRun exit code: " + $script:AutoRunExitCode) -Encoding UTF8
+  exit $script:AutoRunExitCode
+}
